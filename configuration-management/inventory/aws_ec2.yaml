@@ -1,0 +1,10 @@
+---
+plugin: amazon.aws.aws_ec2
+profile: "{{ lookup('env', 'AWS_PROFILE') }}"
+regions:
+  - us-east-1
+filters:
+  tag:name: ["webserver"]
+keyed_groups:
+  - prefix: tag
+    key: tags

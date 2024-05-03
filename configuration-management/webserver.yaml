@@ -1,0 +1,100 @@
+---
+- name: Configure webserver with Nginx and TLS
+  hosts: tag_name_webserver
+  become: true
+  gather_facts: true
+
+  vars:
+    tls_dir: /etc/nginx/ssl/
+    conf_file: /etc/nginx/sites-available/default
+    server_name: localhost
+    proj_name: nginx
+    tls_enabled: true
+
+  handlers:
+    - name: Restart nginx
+      service:
+        name: nginx
+        state: restarted
+
+  tasks:
+    - name: Retrieve EC2 metadata
+      ec2_metadata_facts:
+    - debug:
+        var: "{{ ansible_ec2_public_hostname  }}"
+
+    - name: Install nginx
+      package:
+        name: nginx
+        update_cache: true
+        state: latest
+      notify: Restart nginx
+
+    - name: Create directories for TLS certificates
+      file:
+        path: "{{ tls_dir }}"
+        state: directory
+        mode: "0750"
+      notify: Restart nginx
+
+    - name: Create tls certificates
+      become: true
+      command: >
+        openssl req -new -x509 -nodes -out {{ proj_name }}.crt
+        -keyout {{ proj_name }}.key -subj '/CN={{ server_name }}' -days 365
+      args:
+        chdir: "{{ tls_dir }}"
+        creates: "{{ tls_dir }}/{{ proj_name }}.crt"
+      when: tls_enabled
+      notify: Restart nginx
+
+    - name: Create directory for nginx sites available
+      file:
+        path: /etc/nginx/sites-available/
+        state: directory
+
+    - name: Create directory for nginx sites enabled
+      file:
+        path: /etc/nginx/sites-enabled/
+        state: directory
+
+    - name: Copy nginx.conf
+      template:
+        src: ./files/nginx.conf
+        dest: /etc/nginx/nginx.conf
+        mode: "0644"
+      notify:
+        - Restart nginx
+
+    - name: Configure nginx
+      template:
+        src: ./templates/nginx.conf.j2
+        dest: "{{conf_file}}"
+        mode: "0644"
+      notify:
+        - Restart nginx
+
+    - name: Enable configuration
+      file:
+        src: "{{conf_file}}"
+        dest: /etc/nginx/sites-enabled/default
+        state: link
+
+    - name: Install home page/
+      template:
+        src: ./files/index.html
+        dest: /usr/share/nginx/html/index.html
+        mode: "0644"
+
+    - name: Restart nginx
+      meta: flush_handlers
+
+    - name: "Test it! https://{{ansible_ec2_public_hostname}}"
+      delegate_to: "{{ ansible_ec2_public_hostname }}"
+      become: false
+      uri:
+        url: "https://{{ansible_ec2_public_hostname}}"
+        validate_certs: false
+        return_content: true
+      register: this
+      failed_when: "'Hello World' not in this.content"

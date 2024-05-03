@@ -1,0 +1,34 @@
+ssl_protocols TLSv1.2 TLSv1.3;
+ssl_prefer_server_ciphers on;
+ssl_certificate {{ tls_dir }}{{ proj_name }}.crt;
+ssl_certificate_key {{ tls_dir }}{{ proj_name }}.key;
+        
+server {
+        listen 80;
+        listen [::]:80 ipv6only=on;
+        server_name _;
+        
+        return 301 https://$host$request_uri;
+}
+
+server {
+        listen 443 ssl default_server;
+        server_name {{ ansible_ec2_public_hostname }}
+
+        root /usr/share/nginx/html;
+        index index.html;
+
+        server_tokens off;
+
+        add_header X-Frame-Options DENY;
+        add_header X-Content-Type-Options nosniff;
+
+        location / {
+                try_files $uri $uri/ =404;
+        }
+
+        error_page   500 502 503 504  /50x.html;
+        location = /50x.html {
+            root   /usr/share/nginx/html;
+        }
+}
